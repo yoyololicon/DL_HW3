@@ -90,15 +90,11 @@ def main(_):
 
         # Add training ops into graph.
         with tf.variable_scope('train'):
-            d_loss_true = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(true_logits), logits=true_logits))
-            d_loss_fake = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(fake_logits), logits=fake_logits))
+            d_loss_true = tf.reduce_mean(tf.nn.l2_loss(true_logits-1))
+            d_loss_fake = tf.reduce_mean(tf.nn.l2_loss(fake_logits))
             d_loss = d_loss_fake + d_loss_true
             d_loss = tf.identity(d_loss, name='d_loss')
-            g_loss = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.ones_like(fake_logits), logits=fake_logits),
-                name='g_loss')
+            g_loss = tf.reduce_mean(tf.nn.l2_loss(fake_logits-1, name='g_loss'))
 
             d_loss += tf.losses.get_regularization_loss(scope='discriminator')
             g_loss += tf.losses.get_regularization_loss(scope='generator')
