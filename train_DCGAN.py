@@ -2,7 +2,7 @@ import matplotlib
 
 matplotlib.use('Agg')
 
-from models import generator, discriminator
+from models import generator, discriminator, generator_no_bn, discriminator_no_bn
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,14 +16,14 @@ config.gpu_options.per_process_gpu_memory_fraction = 0.1
 data_dir = '/home/0316223/Datasets/faces'
 scale_height = scale_width = 64
 # parameters for training
-batch_size = 128
-epochs = 150
-latent_size = 100
-d_learning_rate = 0.002
-g_learning_rate = 0.002
+batch_size = 64
+epochs = 70
+latent_size = 50
+d_learning_rate = 0.0002
+g_learning_rate = 0.0002
 beta1 = 0.5
 weight_decay = 0.
-is_training = tf.placeholder_with_default(True, shape=(), name='dropout_control')
+is_training = tf.placeholder_with_default(True, shape=(), name='batchnorm_control')
 
 
 def origin_img(filename):
@@ -84,9 +84,11 @@ def main(_):
 
         regularizer = tf.contrib.layers.l2_regularizer(scale=weight_decay)
 
-        fake_X = generator(Z, regularizer, is_training=is_training)
-        fake_logits = discriminator(fake_X, regularizer, is_training=is_training)
-        true_logits = discriminator(X, regularizer, is_training=is_training, reuse=True)
+        fake_X = generator_no_bn(Z, regularizer)
+
+        # noise_dev = tf.train.exponential_decay(0.1, global_step, 10000, 0.8)
+        fake_logits = discriminator_no_bn(fake_X + tf.random_normal(tf.shape(fake_X), stddev=0.1), regularizer)
+        true_logits = discriminator_no_bn(X + tf.random_normal(tf.shape(X), stddev=0.1), regularizer, reuse=True)
 
         # Add training ops into graph.
         with tf.variable_scope('train'):
@@ -108,10 +110,15 @@ def main(_):
             global_step = tf.Variable(0, name='global_step', trainable=False,
                                       collections=[tf.GraphKeys.GLOBAL_VARIABLES, tf.GraphKeys.GLOBAL_STEP])
 
-            d_optimizer = tf.train.AdamOptimizer(learning_rate=d_learning_rate, beta1=beta1)
-            g_optimizer = tf.train.AdamOptimizer(learning_rate=g_learning_rate, beta1=beta1)
-            d_train = d_optimizer.minimize(d_loss, global_step=global_step, var_list=d_vars, name='d_train_op')
-            g_train = g_optimizer.minimize(g_loss, global_step=global_step, var_list=g_vars, name='g_train_op')
+            d_optimizer = tf.train.RMSPropOptimizer(learning_rate=g_learning_rate)
+            g_optimizer = tf.train.RMSPropOptimizer(learning_rate=d_learning_rate)
+
+            d_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope='discriminator')
+            g_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope='generator')
+            with tf.control_dependencies(d_update_ops):
+                d_train = d_optimizer.minimize(d_loss, global_step=global_step, var_list=d_vars, name='d_train_op')
+            with tf.control_dependencies(g_update_ops):
+                g_train = g_optimizer.minimize(g_loss, global_step=global_step, var_list=g_vars, name='g_train_op')
 
         sess.run(tf.global_variables_initializer())
         # Assign the required tensors to do the operation
@@ -126,6 +133,7 @@ def main(_):
         # Start training
         print('Start training ...')
         a = datetime.now().replace(microsecond=0)
+        fix_noise = np.random.normal(size=(64, latent_size))
         loss_history = []
         for i in range(epochs):
             total_d_loss = total_g_loss = 0
@@ -133,16 +141,30 @@ def main(_):
             for j in range(steps_per_epoch):
                 pos = j * batch_size
                 nums = min(train_num, pos + batch_size) - pos
+
                 noise = np.random.normal(size=(nums, latent_size))
                 _, loss_value = sess.run([d_train_op, d_loss_tensor],
                                          feed_dict={X: train_x[pos:pos + nums], z_tensor: noise})
-                total_d_loss += loss_value * nums
+                total_d_loss += loss_value
 
-                _, loss_value = sess.run([g_train_op, g_loss_tensor], feed_dict={z_tensor: noise})
-                total_g_loss += loss_value
+                for k in range(2):
+                    noise = np.random.normal(size=(nums, latent_size))
+                    _, loss_value = sess.run([g_train_op, g_loss_tensor], feed_dict={z_tensor: noise})
+                    total_g_loss += loss_value / 2
 
-            total_d_loss /= train_num
-            total_g_loss /= train_num
+                if global_step_tensor.eval() % 1500 == 0:
+                    # plot some images
+                    generate_img = sess.run(fake_X, feed_dict={z_tensor: fix_noise, is_training: False})
+                    generate_img = (generate_img + 1) / 2
+                    generate_img = np.column_stack(generate_img.reshape([8, 8, scale_height, scale_width, 3]))
+                    generate_img = np.column_stack(generate_img)
+                    plt.imshow(generate_img)
+                    plt.title("Samples of DCGAN")
+                    plt.savefig("dcgan_generation_" + str(global_step_tensor.eval()) + ".png", dpi=150)
+                    plt.gcf().clear()
+
+            total_d_loss /= steps_per_epoch
+            total_g_loss /= steps_per_epoch
             print("Iter: {}, Global step: {}, discriminator loss: {:.4f}, generator loss: {:.4f}".format(i + 1,
                                                                                                          global_step_tensor.eval(),
                                                                                                          total_d_loss,
@@ -161,16 +183,6 @@ def main(_):
         plt.legend()
         plt.savefig("DCGAN_training_curve.png", dpi=100)
         plt.gcf().clear()
-
-        # plot some images
-        noise = np.random.normal(size=(64, latent_size))
-        generate_img = sess.run(fake_X, feed_dict={z_tensor: noise, is_training: False})
-        generate_img = (generate_img + 1) / 2
-        generate_img = np.column_stack(generate_img.reshape([8, 8, scale_height, scale_width, 3]))
-        generate_img = np.column_stack(generate_img)
-        plt.imshow(generate_img)
-        plt.title("Samples of DCGAN")
-        plt.savefig("dcgan_generation.png", dpi=100)
 
 
 if __name__ == '__main__':

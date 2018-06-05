@@ -70,22 +70,23 @@ def generator(z, regularizer, is_training=False):
     with tf.variable_scope('generator'):
         dense = tf.layers.dense(z, 4 * 4 * 256, kernel_regularizer=regularizer, name='dense')
         reshape = tf.reshape(dense, shape=[-1, 4, 4, 256])
-        reshape = tf.layers.batch_normalization(reshape, training=is_training, name='BN1')
+        reshape = tf.layers.batch_normalization(reshape, training=is_training)
+        reshape = tf.nn.relu(reshape)
 
         deconv1 = tf.layers.conv2d_transpose(reshape, filters=128, kernel_size=5, strides=2, padding='same',
-                                             name='deconv1', activation=tf.nn.relu,
-                                             kernel_regularizer=regularizer)
-        deconv1 = tf.layers.batch_normalization(deconv1, training=is_training, name='BN2')
+                                             name='deconv1', kernel_regularizer=regularizer)
+        deconv1 = tf.layers.batch_normalization(deconv1, training=is_training)
+        deconv1 = tf.nn.relu(deconv1)
 
         deconv2 = tf.layers.conv2d_transpose(deconv1, filters=64, kernel_size=5, strides=2, padding='same',
-                                             name='deconv2', activation=tf.nn.relu,
-                                             kernel_regularizer=regularizer)
-        deconv2 = tf.layers.batch_normalization(deconv2, training=is_training, name='BN3')
+                                             name='deconv2', kernel_regularizer=regularizer)
+        deconv2 = tf.layers.batch_normalization(deconv2, training=is_training)
+        deconv2 = tf.nn.relu(deconv2)
 
         deconv3 = tf.layers.conv2d_transpose(deconv2, filters=32, kernel_size=5, strides=2, padding='same',
-                                             name='deconv3', activation=tf.nn.relu,
-                                             kernel_regularizer=regularizer)
-        deconv3 = tf.layers.batch_normalization(deconv3, training=is_training, name='BN4')
+                                             name='deconv3', kernel_regularizer=regularizer)
+        deconv3 = tf.layers.batch_normalization(deconv3, training=is_training)
+        deconv3 = tf.nn.relu(deconv3)
 
         deconv4 = tf.layers.conv2d_transpose(deconv3, filters=3, kernel_size=5, strides=2, padding='same',
                                              name='deconv4', activation=tf.nn.tanh, kernel_regularizer=regularizer)
@@ -96,20 +97,71 @@ def generator(z, regularizer, is_training=False):
 def discriminator(img, regularizer, is_training=False, reuse=None):
     with tf.variable_scope('discriminator', reuse=reuse):
         conv1 = tf.layers.conv2d(inputs=img, filters=32, kernel_size=5, strides=2, padding='same', name='conv1',
-                                 activation=tf.nn.leaky_relu, kernel_regularizer=regularizer)
-        conv1 = tf.layers.batch_normalization(conv1, training=is_training, name='BN1')
+                                 kernel_regularizer=regularizer)
+        conv1 = tf.layers.batch_normalization(conv1, training=is_training)
+        conv1 = tf.nn.leaky_relu(conv1)
+        conv1 = tf.layers.dropout(conv1, 0.2, training=True)
 
         conv2 = tf.layers.conv2d(inputs=conv1, filters=64, kernel_size=5, strides=2, padding='same', name='conv2',
-                                 activation=tf.nn.leaky_relu, kernel_regularizer=regularizer)
-        conv2 = tf.layers.batch_normalization(conv2, training=is_training, name='BN2')
+                                 kernel_regularizer=regularizer)
+        conv2 = tf.layers.batch_normalization(conv2, training=is_training)
+        conv2 = tf.nn.leaky_relu(conv2)
+        conv2 = tf.layers.dropout(conv2, 0.2, training=True)
 
         conv3 = tf.layers.conv2d(inputs=conv2, filters=128, kernel_size=5, strides=2, padding='same', name='conv3',
-                                 activation=tf.nn.leaky_relu, kernel_regularizer=regularizer)
-        conv3 = tf.layers.batch_normalization(conv3, training=is_training, name='BN3')
+                                 kernel_regularizer=regularizer)
+        conv3 = tf.layers.batch_normalization(conv3, training=is_training)
+        conv3 = tf.nn.leaky_relu(conv3)
+        conv3 = tf.layers.dropout(conv3, 0.2, training=True)
 
         conv4 = tf.layers.conv2d(inputs=conv3, filters=256, kernel_size=5, strides=2, padding='same', name='conv4',
-                                 activation=tf.nn.leaky_relu, kernel_regularizer=regularizer)
-        conv4 = tf.layers.batch_normalization(conv4, training=is_training, name='BN4')
+                                 kernel_regularizer=regularizer)
+        conv4 = tf.layers.batch_normalization(conv4, training=is_training)
+        conv4 = tf.nn.leaky_relu(conv4)
+        conv4 = tf.layers.dropout(conv4, 0.2, training=True)
+
+        flatten = tf.layers.flatten(conv4, name='flatten')
+        logits = tf.layers.dense(flatten, 1, kernel_regularizer=regularizer, name='logits')
+        return logits
+
+
+def generator_no_bn(z, regularizer):
+    with tf.variable_scope('generator'):
+        dense = tf.layers.dense(z, 4 * 4 * 256, kernel_regularizer=regularizer, activation=tf.nn.relu, name='dense')
+        reshape = tf.reshape(dense, shape=[-1, 4, 4, 256])
+
+        deconv1 = tf.layers.conv2d_transpose(reshape, filters=128, kernel_size=5, strides=2, padding='same',
+                                             name='deconv1', kernel_regularizer=regularizer, activation=tf.nn.relu)
+
+        deconv2 = tf.layers.conv2d_transpose(deconv1, filters=64, kernel_size=5, strides=2, padding='same',
+                                             name='deconv2', kernel_regularizer=regularizer, activation=tf.nn.relu)
+
+        deconv3 = tf.layers.conv2d_transpose(deconv2, filters=32, kernel_size=5, strides=2, padding='same',
+                                             name='deconv3', kernel_regularizer=regularizer, activation=tf.nn.relu)
+
+        deconv4 = tf.layers.conv2d_transpose(deconv3, filters=3, kernel_size=5, strides=2, padding='same',
+                                             name='deconv4', activation=tf.nn.tanh, kernel_regularizer=regularizer)
+
+        return deconv4
+
+
+def discriminator_no_bn(img, regularizer, reuse=None):
+    with tf.variable_scope('discriminator', reuse=reuse):
+        conv1 = tf.layers.conv2d(inputs=img, filters=32, kernel_size=5, strides=2, padding='same', name='conv1',
+                                 kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
+        conv1 = tf.layers.dropout(conv1, 0.2, training=True)
+
+        conv2 = tf.layers.conv2d(inputs=conv1, filters=64, kernel_size=5, strides=2, padding='same', name='conv2',
+                                 kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
+        conv2 = tf.layers.dropout(conv2, 0.2, training=True)
+
+        conv3 = tf.layers.conv2d(inputs=conv2, filters=128, kernel_size=5, strides=2, padding='same', name='conv3',
+                                 kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
+        conv3 = tf.layers.dropout(conv3, 0.2, training=True)
+
+        conv4 = tf.layers.conv2d(inputs=conv3, filters=256, kernel_size=5, strides=2, padding='same', name='conv4',
+                                 kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
+        conv4 = tf.layers.dropout(conv4, 0.2, training=True)
 
         flatten = tf.layers.flatten(conv4, name='flatten')
         logits = tf.layers.dense(flatten, 1, kernel_regularizer=regularizer, name='logits')
