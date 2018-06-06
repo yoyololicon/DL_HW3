@@ -16,7 +16,7 @@ config.gpu_options.per_process_gpu_memory_fraction = 0.04
 data_dir = '/home/0316223/Datasets/faces'
 scale_height = scale_width = 96
 # parameters for training
-batch_size = 32
+batch_size = 64
 epochs = 30
 latent_size = 50
 init_learning_rate = 0.001
@@ -74,6 +74,7 @@ def main(_):
         # Add training ops into graph.
         with tf.variable_scope('train'):
             img_loss = tf.reduce_sum(tf.squared_difference(decoded_x, X), axis=[1, 2, 3])
+            #img_loss = tf.reduce_sum(tf.losses.log_loss(X, decoded_x, reduction=tf.losses.Reduction.NONE), axis=[1, 2, 3])
             latent_loss = 0.5 * tf.reduce_sum(var + tf.square(mean) - 1 - tf.log(var), 1)
             loss = tf.reduce_mean(img_loss + latent_loss, name='loss_op')
             loss += tf.losses.get_regularization_loss()
